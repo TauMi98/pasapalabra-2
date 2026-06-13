@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pasapalabra: Horno Túnel (Versión Final)</title>
+    <style>
+        :root {
+            --blue-pending: #1976d2;
+            --orange-current: #ff9800;
+            --green-correct: #4caf50;
+            --red-incorrect: #f44336;
+            --bg-dark: #0f1423;
+            --bg-light: #1a237e;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            background: radial-gradient(circle at center, var(--bg-light) 0%, var(--bg-dark) 100%);
+            color: white;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow-x: hidden;
+        }
+
+        /* Header */
+        header {
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            padding: 15px;
+            background: rgba(0, 0, 0, 0.5);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            z-index: 10;
+        }
+
+        .stat-box {
+            text-align: center;
+            font-size: 1.2rem;
+            font-weight: bold;
+        }
+
+        .timer {
+            font-size: 2.5rem;
+            color: #fff;
+            text-shadow: 0 0 10px #2196f3;
+        }
+
+        .aciertos { color: var(--green-correct); }
+        .errores { color: var(--red-incorrect); }
+
+        /* Main Game Area */
+        main {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            position: relative;
+        }
+
+        /* Rosco Container */
+        .rosco-container {
+            position: relative;
+            width: 90vmin;
+            max-width: 500px;
+            aspect-ratio: 1 / 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* Webcam */
+        .webcam-container {
+            position: absolute;
+            width: 65%;
+            height: 65%;
+            border-radius: 50%;
+            overflow: hidden;
+            border: 4px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 0 30px rgba(25, 118, 210, 0.5);
+            background-color: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1;
+        }
+
+        #webcam {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1);
+        }
+
+        .webcam-message {
+            position: absolute;
+            text-align: center;
+            padding: 20px;
+            font-size: 0.9rem;
+            color: #aaa;
+        }
+
+        /* Letters */
+        .letter {
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-weight: bold;
+            font-size: 1.2rem;
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.5), 0 0 10px rgba(0,0,0,0.5);
+            border: 2px solid rgba(255,255,255,0.3);
+            transition: background-color 0.3s, transform 0.3s, border-color 0.3s, box-shadow 0.3s;
+            z-index: 2;
+            transform: translate(-50%, -50%);
+        }
+
+        /* Estados visuales excluyentes */
+        .letter.pending {
+            background-color: var(--blue-pending);
+        }
+
+        .letter.current {
+            background-color: var(--orange-current) !important;
+            transform: translate(-50%, -50%) scale(1.3) !important;
+            border-color: #fff !important;
+            box-shadow: 0 0 20px var(--orange-current) !important;
+            z-index: 3 !important;
+        }
+
+        .letter.correct {
+            background-color: var(--green-correct) !important;
+        }
+
+        .letter.incorrect {
+            background-color: var(--red-incorrect) !important;
+        }
+
+        /* Footer */
+        footer {
+            padding: 20px;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .question-text {
+            font-size: 1.3rem;
+            text-align: center;
+            max-width: 800px;
+            min-height: 3em;
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            width: 100%;
+        }
+
+        .controls {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        button {
+            padding: 15px 30px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-transform: uppercase;
+        }
+
+        button:active { transform: scale(0.95); }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .btn-voz {
+            background-color: #2196f3;
+            color: white;
+            box-shadow: 0 4px 15px rgba(33, 150, 243, 0.4);
+        }
+        .btn-voz.recording {
+            background-color: #f44336;
+            animation: pulse 1.5s infinite;
+        }
+
+        .btn-pasapalabra {
+            background-color: #ffb300;
+            color: #000;
+            box-shadow: 0 4px 15px rgba(255, 179, 0, 0.4);
+        }
+
+        /* End Screen Overlay */
+        .overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(15, 20, 35, 0.95);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.5s;
+        }
+
+        .overlay.active {
+            opacity: 1;
+            pointer-events: all;
+        }
+
+        .results-box {
+            background: linear-gradient(135deg, #1976d2, #1a237e);
+            padding: 40px;
+            border-radius: 20px;
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+            border: 2px solid #64b5f6;
+            max-width: 90%;
+        }
+
+        .results-box h1 { font-size: 3rem; margin-bottom: 20px; }
+        .results-box p { font-size: 1.5rem; margin: 10px 0; }
+        .results-box .porcentaje { font-size: 2rem; font-weight: bold; color: #ffeb3b; margin: 20px 0; }
+
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(244, 67, 54, 0.7); }
+            70% { box-shadow: 0 0 0 15px rgba(244, 67, 54, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(244, 67, 54, 0); }
+        }
+
+        @media (max-width: 600px) {
+            .letter { width: 30px; height: 30px; font-size: 0.9rem; }
+            .timer { font-size: 2rem; }
+            button { padding: 12px 20px; font-size: 1rem; }
+            .question-text { font-size: 1.1rem; }
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="stat-box aciertos">Aciertos: <span id="ui-aciertos">0</span></div>
+        <div class="stat-box timer" id="ui-timer">05:00</div>
+        <div class="stat-box errores">Errores: <span id="ui-errores">0</span></div>
+    </header>
+
+    <main>
+        <div class="rosco-container" id="rosco">
+            <div class="webcam-container">
+                <span class="webcam-message" id="webcam-msg">Solicitando cámara...</span>
+                <video id="webcam" autoplay playsinline muted></video>
+            </div>
+            </div>
+    </main>
+
+    <footer>
+        <div class="question-text" id="ui-question">
+            Presiona "Activar voz" para comenzar el juego.
+        </div>
+        <div class="controls">
+            <button class="btn-voz" id="btn-voz">🎤 Activar voz</button>
+            <button class="btn-pasapalabra" id="btn-pasapalabra" disabled>⏭️ Pasapalabra</button>
+        </div>
+    </footer>
+
+    <div class="overlay" id="end-screen">
+        <div class="results-box">
+            <h1>Juego Terminado</h1>
+            <p>Aciertos: <span id="final-aciertos" style="color:var(--green-correct)">0</span></p>
+            <p>Errores: <span id="final-errores" style="color:var(--red-incorrect)">0</span></p>
+            <div class="porcentaje">Efectividad: <span id="final-porcentaje">0</span>%</div>
+            <button class="btn-voz" style="margin-top: 20px;" onclick="location.reload()">Jugar Nuevamente</button>
+        </div>
+    </div>
+
+    <script>
+        // Datos de las preguntas
+        const questions = [
+            { letter: 'A', prefix: 'Empieza por A.', text: 'Acción que realiza la cinta para mover los productos dentro del horno.', answer: 'Avance', status: 'pending' },
+            { letter: 'B', prefix: 'Empieza por B.', text: 'Producto de panificación que puede elaborarse en horno túnel.', answer: 'Bizcocho', status: 'pending' },
+            { letter: 'C', prefix: 'Empieza por C.', text: 'Elemento que transporta los productos a través del horno.', answer: 'Cinta transportadora', status: 'pending' },
+            { letter: 'D', prefix: 'Contiene la D.', text: 'Reacción química de oscurecimiento no enzimático que le da el color dorado y el sabor característico a la corteza del pan.', answer: 'Maillard', status: 'pending' },
+            { letter: 'E', prefix: 'Empieza por E.', text: 'Magnitud física que se transfiere al alimento durante el horneado.', answer: 'Energía', status: 'pending' },
+            { letter: 'F', prefix: 'Empieza por F.', text: 'Etapa industrial en la que se elaboran productos alimenticios.', answer: 'Fabricación', status: 'pending' },
+            { letter: 'G', prefix: 'Empieza por G.', text: 'Producto de panificación muy elaborado en hornos túnel.', answer: 'Galletita', status: 'pending' },
+            { letter: 'H', prefix: 'Empieza por H.', text: 'Proceso principal que realiza este equipo.', answer: 'Horneado', status: 'pending' },
+            { letter: 'I', prefix: 'Empieza por I.', text: 'Sector donde se utiliza ampliamente este horno.', answer: 'Industria', status: 'pending' },
+            { letter: 'J', prefix: 'Contiene la J.', text: 'Acción de unir partes o componentes de la estructura metálica.', answer: 'Ensamblaje', status: 'pending' },
+            { letter: 'K', prefix: 'Empieza por K.', text: 'Unidad utilizada para medir temperaturas absolutas en ingeniería.', answer: 'Kelvin', status: 'pending' },
+            { letter: 'L', prefix: 'Empieza por L.', text: 'Lugar donde se instala el horno dentro de una fábrica.', answer: 'Línea de producción', status: 'pending' },
+            { letter: 'M', prefix: 'Empieza por M.', text: 'Actividad necesaria para conservar el correcto funcionamiento del horno.', answer: 'Mantenimiento', status: 'pending' },
+            { letter: 'N', prefix: 'Empieza por N.', text: 'Proceso de transferencia térmica donde el aire caliente sube y el frío baja generando corrientes dentro del horno.', answer: 'Convección', status: 'pending' },
+            { letter: 'Ñ', prefix: 'Contiene la Ñ.', text: 'Acción de diseñar o proyectar un equipo industrial.', answer: 'Diseño', status: 'pending' },
+            { letter: 'O', prefix: 'Contiene la O.', text: 'Tipo de equipo estudiado en la exposición.', answer: 'Horno', status: 'pending' },
+            { letter: 'P', prefix: 'Empieza por P.', text: 'Sistema de trabajo característico del horno túnel.', answer: 'Producción continua', status: 'pending' },
+            { letter: 'Q', prefix: 'Empieza por Q.', text: 'El corazón de los hornos a gas; se encarga de realizar la combustión para generar calor.', answer: 'Quemador', status: 'pending' },
+            { letter: 'R', prefix: 'Empieza por R.', text: 'Tipo de transferencia de calor emitida por superficies calientes.', answer: 'Radiación', status: 'pending' },
+            { letter: 'S', prefix: 'Empieza por S.', text: 'Sistema encargado de controlar el funcionamiento del equipo.', answer: 'Sensores', status: 'pending' },
+            { letter: 'T', prefix: 'Empieza por T.', text: 'Nombre del horno estudiado.', answer: 'Túnel', status: 'pending' },
+            { letter: 'U', prefix: 'Empieza por U.', text: 'Característica de la cocción en este tipo de horno.', answer: 'Uniformidad', status: 'pending' },
+            { letter: 'V', prefix: 'Empieza por V.', text: 'Movimiento que favorece la circulación del aire caliente.', answer: 'Ventilación', status: 'pending' },
+            { letter: 'W', prefix: 'Empieza por W.', text: 'Unidad de potencia utilizada para expresar la energía de equipos eléctricos.', answer: 'Watt', status: 'pending' },
+            { letter: 'X', prefix: 'Empieza por X.', text: 'Operación industrial donde se mezclan y transforman ingredientes mediante un tornillo.', answer: 'Extrusión', status: 'pending' },
+            { letter: 'Y', prefix: 'Empieza por Y.', text: 'Parte del huevo utilizada para pintar las facturas antes del horneado.', answer: 'Yema', status: 'pending' },
+            { letter: 'Z', prefix: 'Empieza por Z.', text: 'Sector del horno túnel por donde ingresa la masa cruda para comenzar su recorrido.', answer: 'Zona de carga', status: 'pending' }
+        ];
+
+        // Estado del juego
+        let currentIndex = 0;
+        let aciertos = 0;
+        let errores = 0;
+        let timeLeft = 300; // 5 minutos
+        let timerInterval;
+        let gameActive = false;
+        let isSpeaking = false; // Bloqueo crítico del micrófono
+        
+        // Elementos del DOM
+        const roscoEl = document.getElementById('rosco');
+        const uiTimer = document.getElementById('ui-timer');
+        const uiAciertos = document.getElementById('ui-aciertos');
+        const uiErrores = document.getElementById('ui-errores');
+        const uiQuestion = document.getElementById('ui-question');
+        const btnVoz = document.getElementById('btn-voz');
+        const btnPasapalabra = document.getElementById('btn-pasapalabra');
+        const letterElements = [];
+
+        // Distancia de Levenshtein (Similitud)
+        function levenshteinDistance(a, b) {
+            const matrix = [];
+            for (let i = 0; i <= b.length; i++) { matrix[i] = [i]; }
+            for (let j = 0; j <= a.length; j++) { matrix[0][j] = j; }
+            for (let i = 1; i <= b.length; i++) {
+                for (let j = 1; j <= a.length; j++) {
+                    if (b.charAt(i - 1) === a.charAt(j - 1)) {
+                        matrix[i][j] = matrix[i - 1][j - 1];
+                    } else {
+                        matrix[i][j] = Math.min(matrix[i - 1][j - 1] + 1, Math.min(matrix[i][j - 1] + 1, matrix[i - 1][j] + 1));
+                    }
+                }
+            }
+            return matrix[b.length][a.length];
+        }
+
+        // Evaluar la corrección de la respuesta
+        function isCorrect(input, target) {
+            const normalize = (str) => {
+                return str.toLowerCase()
+                          .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+                          .replace(/[.,;¡!¿?]/g, "") // Elimina signos de puntuación
+                          .replace(/^(el|la|los|las|un|una)\s+/g, '')
+                          .trim();
+            };
+            
+            const cleanInput = normalize(input);
+            const cleanTarget = normalize(target);
+            
+            const maxLen = Math.max(cleanInput.length, cleanTarget.length);
+            if (maxLen === 0) return false;
+            
+            const distance = levenshteinDistance(cleanInput, cleanTarget);
+            const similarity = ((maxLen - distance) / maxLen) * 100;
+            
+            console.log(`🎙️ Escuchado: "${cleanInput}" | 🎯 Esperado: "${cleanTarget}" | 📊 Similitud: ${similarity.toFixed(2)}%`);
+            
+            return similarity >= 80;
+        }
+
+        // Construir el rosco en pantalla
+        function createRosco() {
+            const total = questions.length;
+            const radius = 45; 
+            
+            questions.forEach((q, index) => {
+                const angle = (index / total) * 2 * Math.PI - (Math.PI / 2);
+                const x = 50 + radius * Math.cos(angle);
+                const y = 50 + radius * Math.sin(angle);
+
+                const el = document.createElement('div');
+                el.className = 'letter pending'; 
+                el.innerText = q.letter;
+                el.style.left = `${x}%`;
+                el.style.top = `${y}%`;
+                
+                roscoEl.appendChild(el);
+                letterElements.push(el);
+            });
+        }
+
+        // Configurar la cámara
+        async function initCamera() {
+            const video = document.getElementById('webcam');
+            const msg = document.getElementById('webcam-msg');
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                video.srcObject = stream;
+                msg.style.display = 'none';
+            } catch (err) {
+                msg.innerText = "Cámara no disponible";
+            }
+        }
+
+        // Configurar el Reconocimiento de Voz
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        let recognition = null;
+        if (SpeechRecognition) {
+            recognition = new SpeechRecognition();
+            recognition.lang = 'es-ES';
+            recognition.continuous = true;
+            recognition.interimResults = false;
+
+            recognition.onresult = (event) => {
+                if (!gameActive || isSpeaking) return;
+                
+                const currentResultIndex = event.results.length - 1;
+                const transcript = event.results[currentResultIndex][0].transcript.trim().toLowerCase();
+                
+                if (transcript.includes('pasapalabra')) {
+                    if (recognition) { try { recognition.stop(); } catch(e){} }
+                    handlePasapalabra();
+                    return;
+                }
+
+                evaluateAnswer(transcript);
+            };
+
+            recognition.onend = () => {
+                if (gameActive && !isSpeaking) {
+                    try { recognition.start(); } catch (e) {}
+                }
+            };
+
+            recognition.onerror = (event) => {
+                if (event.error === 'not-allowed') {
+                    alert("Por favor, permite el acceso al micrófono para jugar.");
+                    gameActive = false;
+                }
+            };
+        } else {
+            alert("Tu navegador no soporta la API de reconocimiento de voz.");
+        }
+
+        // Configurar la Síntesis de Voz
+        const synth = window.speechSynthesis;
+        let esVoice = null;
+        
+        function initVoices() {
+            const voices = synth.getVoices();
+            esVoice = voices.find(v => v.lang.startsWith('es') && (v.name.includes('Female') || v.name.includes('Mujer'))) 
+                      || voices.find(v => v.lang.startsWith('es')) 
+                      || voices[0];
+        }
+        if (synth.onvoiceschanged !== undefined) {
+            synth.onvoiceschanged = initVoices;
+        } else {
+            initVoices();
+        }
+
+        // Función centralizada para reproducir voz y gestionar los bloqueos
+        function speak(text, callback) {
+            if (synth.speaking) synth.cancel();
+            
+            isSpeaking = true;
+            btnVoz.classList.remove('recording');
+            
+            // Forzar el apagado del micrófono inmediatamente
+            if (recognition) { try { recognition.stop(); } catch(e){} }
+
+            const utterThis = new SpeechSynthesisUtterance(text);
+            if (esVoice) utterThis.voice = esVoice;
+            utterThis.rate = 1.05; 
+
+            utterThis.onend = () => {
+                if (callback) callback(); 
+
+                if (gameActive) {
+                    isSpeaking = false; 
+                    btnVoz.classList.add('recording');
+                    try { recognition.start(); } catch(e){}
+                } else {
+                    isSpeaking = false;
+                }
+            };
+            
+            utterThis.onerror = () => {
+                isSpeaking = false;
+                if (gameActive) {
+                    try { recognition.start(); } catch(e){}
+                }
+            };
+
+            synth.speak(utterThis);
+        }
+
+        // Iniciar el juego
+        function startGame() {
+            gameActive = true;
+            btnVoz.innerHTML = "🎙️ Escuchando...";
+            btnPasapalabra.disabled = false;
+            
+            timerInterval = setInterval(updateTimer, 1000);
+            updateRoscoUI(); 
+            playCurrentLetter();
+        }
+
+        // Leer la letra actual
+        function playCurrentLetter() {
+            if (!gameActive) return;
+
+            let found = false;
+            let startIndex = currentIndex;
+            
+            for (let i = 0; i < questions.length; i++) {
+                if (questions[currentIndex].status === 'pending') {
+                    found = true;
+                    break;
+                }
+                currentIndex = (currentIndex + 1) % questions.length;
+            }
+
+            if (!found) {
+                endGame();
+                return;
+            }
+
+            updateRoscoUI();
+            const q = questions[currentIndex];
+            uiQuestion.innerHTML = `<strong>${q.letter}</strong> - ${q.text}`;
+            
+            speak(`${q.prefix} ${q.text}`);
+        }
+
+        // Evaluar la respuesta del jugador
+        function evaluateAnswer(transcript) {
+            if (!gameActive || isSpeaking) return;
+
+            // Detener la escucha para que el "Correcto"/"Incorrecto" no cause eco
+            if (recognition) { try { recognition.stop(); } catch(e){} }
+
+            const q = questions[currentIndex];
+            
+            if (isCorrect(transcript, q.answer)) {
+                q.status = 'correct'; 
+                aciertos++;
+                uiAciertos.innerText = aciertos;
+                updateRoscoUI(); // Actualizar colores al instante
+                
+                speak("Correcto", () => {
+                    currentIndex = (currentIndex + 1) % questions.length;
+                    playCurrentLetter();
+                });
+            } else {
+                q.status = 'incorrect'; 
+                errores++;
+                uiErrores.innerText = errores;
+                updateRoscoUI(); // Actualizar colores al instante
+                
+                speak("Incorrecto", () => {
+                    currentIndex = (currentIndex + 1) % questions.length;
+                    playCurrentLetter();
+                });
+            }
+        }
+
+        // Gestionar el salto de palabra
+        function handlePasapalabra() {
+            if (!gameActive || isSpeaking) return;
+            
+            updateRoscoUI(); 
+
+            speak("Pasapalabra", () => {
+                currentIndex = (currentIndex + 1) % questions.length;
+                playCurrentLetter();
+            });
+        }
+
+        // Actualizar el cronómetro
+        function updateTimer() {
+            if (timeLeft <= 0) {
+                endGame();
+                return;
+            }
+            timeLeft--;
+            const m = Math.floor(timeLeft / 60).toString().padStart(2, '0');
+            const s = (timeLeft % 60).toString().padStart(2, '0');
+            uiTimer.innerText = `${m}:${s}`;
+        }
+
+        // Pintar el estado del rosco en pantalla
+        function updateRoscoUI() {
+            questions.forEach((q, i) => {
+                const el = letterElements[i];
+                
+                // Reiniciar clase base
+                el.className = 'letter'; 
+
+                // Asignar el color según su estado interno estricto
+                if (q.status === 'correct') {
+                    el.classList.add('correct');
+                } else if (q.status === 'incorrect') {
+                    el.classList.add('incorrect');
+                } else {
+                    el.classList.add('pending'); 
+                }
+                
+                // Solo asignar "current" si el juego está activo, es el índice correspondiente y está pendiente
+                if (gameActive && i === currentIndex && q.status === 'pending') {
+                    el.classList.remove('pending');
+                    el.classList.add('current');
+                }
+            });
+        }
+
+        // Finalizar el juego
+        function endGame() {
+            gameActive = false;
+            clearInterval(timerInterval);
+            if (recognition) { try { recognition.stop(); } catch(e){} }
+            if (synth.speaking) synth.cancel();
+            isSpeaking = false; 
+            
+            btnVoz.classList.remove('recording');
+            btnVoz.innerHTML = "Juego Terminado";
+            btnVoz.disabled = true;
+            btnPasapalabra.disabled = true;
+
+            const totalRespondidas = questions.length;
+            const efectividad = questions.length > 0 ? Math.round((aciertos / questions.length) * 100) : 0;
+
+            document.getElementById('final-aciertos').innerText = aciertos;
+            document.getElementById('final-errores').innerText = errores;
+            document.getElementById('final-porcentaje').innerText = efectividad;
+            
+            document.getElementById('end-screen').classList.add('active');
+            
+            updateRoscoUI(); 
+
+            setTimeout(() => {
+                speak(`Juego terminado. Conseguiste ${aciertos} aciertos y ${errores} errores.`);
+            }, 500);
+        }
+
+        // Botones e inicialización de eventos
+        btnVoz.addEventListener('click', () => {
+            if (!gameActive && aciertos === 0 && errores === 0 && timeLeft === 300) {
+                const u = new SpeechSynthesisUtterance('');
+                synth.speak(u);
+                
+                if (!esVoice) initVoices();
+
+                startGame();
+            }
+        });
+
+        btnPasapalabra.addEventListener('click', handlePasapalabra);
+
+        window.addEventListener('load', () => {
+            createRosco();
+            initCamera();
+            setTimeout(initVoices, 100);
+        });
+
+    </script>
+</body>
+</html>
